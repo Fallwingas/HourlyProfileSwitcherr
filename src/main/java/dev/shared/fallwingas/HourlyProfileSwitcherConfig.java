@@ -1,84 +1,71 @@
 package dev.shared.fallwingas;
 
-import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 
-import dev.shared.do_gamer.utils.ServerTimeHelper;
-import eu.darkbot.api.PluginAPI;
-import eu.darkbot.api.config.ConfigSetting;
-import eu.darkbot.api.extensions.Behavior;
-import eu.darkbot.api.extensions.Configurable;
-import eu.darkbot.api.extensions.Feature;
-import eu.darkbot.api.extensions.Task;
-import eu.darkbot.api.managers.BackpageAPI;
+import eu.darkbot.api.config.annotations.Configuration;
+import eu.darkbot.api.config.annotations.Dropdown;
+import eu.darkbot.api.config.annotations.Number;
+import eu.darkbot.api.config.annotations.Option;
 import eu.darkbot.api.managers.ConfigAPI;
+import eu.darkbot.shared.config.ProfileNames;
 
-@Feature(
-        name = "Hourly Profile Switcher",
-        description = "Switches to a selected profile at a chosen minute every hour."
-)
-public class HourlyProfileSwitcher
-        implements Behavior, Task, Configurable<HourlyProfileSwitcherConfig> {
+@Configuration("fallwingas.hourly_profile_switcher")
+public class HourlyProfileSwitcherConfig {
 
-    private final ConfigAPI configApi;
-    private final BackpageAPI backpageApi;
-
-    private HourlyProfileSwitcherConfig config;
-    private LocalDateTime lastSwitchHour;
-
-    public HourlyProfileSwitcher(PluginAPI api) {
-        this.configApi = api.requireAPI(ConfigAPI.class);
-        this.backpageApi = api.requireAPI(BackpageAPI.class);
+    public enum TimeSource {
+        PC,
+        SERVER
     }
 
-    @Override
-    public void setConfig(ConfigSetting<HourlyProfileSwitcherConfig> setting) {
-        this.config = setting.getValue();
-    }
+    public static class TimeSourceOptions implements Dropdown.Options<TimeSource> {
+        @Override
+        public List<TimeSource> options() {
+            return List.of(TimeSource.PC, TimeSource.SERVER);
+        }
 
-    @Override
-    public void onBackgroundTick() {
-        if (this.config != null
-                && this.config.timeSource == HourlyProfileSwitcherConfig.TimeSource.SERVER) {
-            ServerTimeHelper.fetchServerOffset(this.backpageApi);
+        @Override
+        public String getText(TimeSource option) {
+            return option == TimeSource.SERVER ? "Server time" : "PC time";
         }
     }
 
-    @Override
-    public void onTickBehavior() {
-        this.checkSchedule();
-    }
-
-    @Override
-    public void onStoppedBehavior() {
-        this.checkSchedule();
-    }
-
-    private void checkSchedule() {
-        if (this.config == null || !this.config.enabled
-                || this.config.profile == null || this.config.profile.isBlank()) {
-            return;
+    public static class ProfileOptions extends ProfileNames {
+        public ProfileOptions(ConfigAPI api) {
+            super(api);
         }
 
-        LocalDateTime now;
-        if (this.config.timeSource == HourlyProfileSwitcherConfig.TimeSource.SERVER) {
-            if (!ServerTimeHelper.offsetUpdated()) {
-                return;
+        @Override
+        public Collection<String> options() {
+            List<String> profiles = new ArrayList<>();
+            profiles.add(null);
+
+            Collection<String> availableProfiles = super.options();
+            if (availableProfiles != null) {
+                profiles.addAll(availableProfiles);
             }
-            now = ServerTimeHelper.currentDateTime();
-        } else {
-            now = LocalDateTime.now();
-        }
 
-        if (now.getMinute() != this.config.minute) {
-            return;
+            return profiles;
         }
-
-        LocalDateTime thisHour = now.withMinute(0).withSecond(0).withNano(0);
-        if (thisHour.equals(this.lastSwitchHour)) {
-            return;
-        }
-
-        this.configApi.setConfigProfile(this.config.profile);
-        this.lastSwitchHour = thisHour;
     }
+
+    @Option("general.enabled")
+    public boolean enabled = false;
+
+    @Option("fallwingas.hourly_profile_switcher.first_profile")
+    @Dropdown(options = ProfileOptions.class)
+    public String firstProfile = null;
+
+    @Option("fallwingas.hourly_profile_switcher.second_profile")
+    @Dropdown(options = ProfileOptions.class)
+    public String secondProfile = null;
+
+    @Option("fallwingas.hourly_profile_switcher.time_source")
+    @Dropdown(options = TimeSourceOptions.class)
+    public TimeSource timeSource = TimeSource.PC;
+
+    @Option("fallwingas.hourly_profile_switcher.minute")
+    @Number(min = 0, max = 59, step = 1)
+    public int minute = 55;
 }
